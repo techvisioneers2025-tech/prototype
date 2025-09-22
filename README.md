@@ -1,69 +1,96 @@
-# React + TypeScript + Vite
+# Smart Travel Safety - Prototype
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is a prototype for the "Smart Travel Safety" Progressive Web App (PWA), designed to enhance tourist safety through real-time monitoring and emergency response. This prototype was built for a hackathon-style presentation.
 
-Currently, two official plugins are available:
+## Core Features Implemented
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+*   **Tourist Registration:** Users can register for an account.
+*   **Live GPS Tracking:** The tourist dashboard tracks the user's location in real-time and displays it on a map.
+*   **Panic Button:** A prominent panic button allows tourists to send an emergency alert.
+*   **Authority Dashboard:** A separate dashboard for authorities displays the real-time location of all tourists, highlighting those who have triggered an emergency alert.
+*   **Real-time System:** The entire system is connected in real-time using Supabase subscriptions.
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+*   **Frontend:** React 18+ with TypeScript, Vite, and Tailwind CSS.
+*   **Backend:** Supabase (Authentication, PostgreSQL Database, Real-time Subscriptions).
+*   **Maps:** Leaflet and React-Leaflet.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Getting Started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Follow these instructions to get the project running on your local machine.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd <repository-directory>
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Install Dependencies
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+### 3. Set Up Environment Variables
+
+The project uses Supabase for its backend. You will need to create a Supabase project and get your API URL and anon key.
+
+1.  Create a `.env` file in the root of the project.
+2.  Add your Supabase credentials to the `.env` file like this:
+
+    ```
+    VITE_SUPABASE_URL="YOUR_SUPABASE_URL"
+    VITE_SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_KEY"
+    ```
+
+    Replace `"YOUR_SUPABASE_URL"` and `"YOUR_SUPABASE_ANON_KEY"` with your actual Supabase project credentials.
+
+### 4. Set Up the Database
+
+You need to create a `locations` table in your Supabase database. You can do this by running the following SQL query in the Supabase SQL Editor:
+
+```sql
+-- Create the locations table
+CREATE TABLE public.locations (
+  user_id uuid NOT NULL,
+  latitude double precision NOT NULL,
+  longitude double precision NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  status text DEFAULT 'safe'::text,
+  CONSTRAINT locations_pkey PRIMARY KEY (user_id),
+  CONSTRAINT locations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
+);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Allow users to insert their own location
+CREATE POLICY "Allow individual insert access"
+ON public.locations
+FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Allow users to update their own location
+CREATE POLICY "Allow individual update access"
+ON public.locations
+FOR UPDATE USING (auth.uid() = user_id);
+
+-- Policy: Allow all users (including authorities) to read all locations
+CREATE POLICY "Allow all read access"
+ON public.locations
+FOR SELECT USING (true);
+
+-- Enable real-time on the table
+ALTER PUBLICATION supabase_realtime ADD TABLE public.locations;
+```
+
+### 5. Run the Development Server
+
+```bash
+npm run dev
+```
+
+The application should now be running on `http://localhost:5173`.
+
+**Note on potential environment issues:** Some environments may have trouble running `npm` executables directly (e.g., `vite`). If `npm run dev` fails, you may need to call the executable directly from the `node_modules` folder, although this was found to be unreliable in some sandboxed environments.

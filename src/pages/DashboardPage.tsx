@@ -2,15 +2,21 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { LatLngExpression } from 'leaflet';
 import { supabase } from '../supabaseClient';
+import { User } from '@supabase/supabase-js';
 
 const DashboardPage = () => {
   const [position, setPosition] = useState<LatLngExpression | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [panicMessage, setPanicMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+      if (!user) {
+        setError("You are not logged in. Please login to use the dashboard.");
+      }
     };
     fetchUser();
   }, []);
@@ -26,6 +32,7 @@ const DashboardPage = () => {
       },
       (err) => {
         console.error(err);
+        setError(`Geolocation error: ${err.message}`);
       },
       { enableHighAccuracy: true }
     );
@@ -52,18 +59,22 @@ const DashboardPage = () => {
 
   const handlePanic = async () => {
     if (!user) return;
-    console.log('Panic button pressed!');
+    setPanicMessage('Sending emergency signal...');
     const { error } = await supabase
       .from('locations')
       .update({ status: 'emergency', updated_at: new Date().toISOString() })
       .eq('user_id', user.id);
 
     if (error) {
-      console.error('Error updating status:', error);
+      setPanicMessage(`Error: ${error.message}`);
     } else {
-      alert('Emergency signal sent! Authorities have been notified.');
+      setPanicMessage('Emergency signal sent! Authorities have been notified.');
     }
   };
+
+  if (error) {
+    return <div className="flex justify-center items-center h-screen"><p className="text-red-500">{error}</p></div>;
+  }
 
   return (
     <div className="relative h-screen">
@@ -84,11 +95,14 @@ const DashboardPage = () => {
           <p>Getting your location...</p>
         </div>
       )}
-      <button
-        onClick={handlePanic}
-        className="absolute bottom-10 right-10 bg-red-500 hover:bg-red-700 text-white font-bold rounded-full w-24 h-24 flex items-center justify-center text-lg z-1000 animate-pulse">
-        PANIC
-      </button>
+      <div className="absolute bottom-10 right-10 z-1000">
+        {panicMessage && <p className="text-white bg-black p-2 rounded mb-2">{panicMessage}</p>}
+        <button
+          onClick={handlePanic}
+          className="bg-red-500 hover:bg-red-700 text-white font-bold rounded-full w-24 h-24 flex items-center justify-center text-lg animate-pulse">
+          PANIC
+        </button>
+      </div>
     </div>
   );
 };

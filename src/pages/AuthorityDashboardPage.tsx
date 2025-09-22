@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import { supabase } from '../supabaseClient';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
-// Custom red icon for emergencies
+// ... (icon definitions remain the same)
 const emergencyIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -22,6 +23,7 @@ const defaultIcon = new L.Icon({
     shadowSize: [41, 41]
 });
 
+
 interface TouristLocation {
   user_id: string;
   latitude: number;
@@ -31,7 +33,8 @@ interface TouristLocation {
 }
 
 const AuthorityDashboardPage = () => {
-  const [locations, setLocations] = useState<TouristLocation[]>([]);
+  const [locations, setLocations] = useState<Map<string, TouristLocation>>(new Map());
+  const [error, setError] = useState<string | null>(null);
   const initialPosition: LatLngExpression = [20.5937, 78.9629]; // Default to center of India
 
   useEffect(() => {
@@ -39,21 +42,35 @@ const AuthorityDashboardPage = () => {
       const { data, error } = await supabase.from('locations').select('*');
       if (error) {
         console.error('Error fetching locations:', error);
+        setError(`Failed to fetch locations: ${error.message}`);
       } else {
-        setLocations(data as TouristLocation[]);
+        const locationsMap = new Map(data.map(loc => [loc.user_id, loc as TouristLocation]));
+        setLocations(locationsMap);
       }
     };
 
     fetchLocations();
 
-    const subscription = supabase.channel('custom-all-channel')
-      .on(
+    const handleRealtimeUpdate = (payload: RealtimePostgresChangesPayload<TouristLocation>) => {
+      console.log('Change received!', payload);
+      const newRecord = payload.new as TouristLocation;
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        setLocations(prevLocations => new Map(prevLocations).set(newRecord.user_id, newRecord));
+      } else if (payload.eventType === 'DELETE') {
+        const oldRecord = payload.old as TouristLocation;
+        setLocations(prevLocations => {
+            const newMap = new Map(prevLocations);
+            newMap.delete(oldRecord.user_id);
+            return newMap;
+        });
+      }
+    };
+
+    const subscription = supabase.channel('public:locations')
+      .on<TouristLocation>(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'locations' },
-        (payload) => {
-          console.log('Change received!', payload);
-          fetchLocations();
-        }
+        handleRealtimeUpdate
       )
       .subscribe();
 
@@ -62,14 +79,20 @@ const AuthorityDashboardPage = () => {
     };
   }, []);
 
+  if (error) {
+    return <div className="flex justify-center items-center h-screen"><p className="text-red-500">{error}</p></div>;
+  }
+
+  const locationsArray = Array.from(locations.values());
+
   return (
-    <div className="h-screen">
+    <div className="h-screen relative">
       <MapContainer center={initialPosition} zoom={5} scrollWheelZoom={false} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {locations.map((loc) => (
+        {locationsArray.map((loc) => (
           <Marker
             key={loc.user_id}
             position={[loc.latitude, loc.longitude]}
@@ -83,6 +106,11 @@ const AuthorityDashboardPage = () => {
           </Marker>
         ))}
       </MapContainer>
+      {locationsArray.length === 0 && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded shadow-lg z-1000">
+          <p>No active tourists being tracked.</p>
+        </div>
+      )}
     </div>
   );
 };
